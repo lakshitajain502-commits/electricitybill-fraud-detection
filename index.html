@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BillGuard AI — Electricity Bill Fraud Detection</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <!-- CDN Libraries (no install needed — works offline after first load) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SIDEBAR NAVIGATION
+  ════════════════════════════════════════════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-icon">⚡</span>
+      <div>
+        <div class="brand-name">BillGuard <span class="brand-accent">AI</span></div>
+        <div class="brand-tagline">Electricity Fraud Detection</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-view="dashboard">
+        <span class="nav-icon">📊</span> Dashboard
+      </a>
+      <a href="#" class="nav-item" data-view="upload">
+        <span class="nav-icon">📂</span> Upload Data
+      </a>
+      <a href="#" class="nav-item" data-view="anomalies">
+        <span class="nav-icon">🔍</span> Suspicious Records
+        <span class="nav-badge" id="navBadge" style="display:none"></span>
+      </a>
+      <a href="#" class="nav-item" data-view="all-records">
+        <span class="nav-icon">📋</span> All Records
+      </a>
+      <a href="#" class="nav-item" data-view="about">
+        <span class="nav-icon">ℹ️</span> How It Works
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">No data loaded</span>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MAIN WRAPPER
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="main-wrapper">
+
+    <!-- Top Bar -->
+    <header class="topbar">
+      <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">☰</button>
+      <div class="topbar-title" id="topbarTitle">Dashboard</div>
+      <div class="topbar-actions">
+        <span class="ai-mode-badge" id="aiModeBadge" style="display:none">⚡ AI Demo Mode</span>
+        <span class="topbar-badge" id="anomalyBadge" style="display:none"></span>
+        <button class="btn btn--outline btn--sm" id="btnReset" style="display:none" title="Clear data and start over">↺ Reset</button>
+        <button class="btn btn--outline btn--sm" id="btnDownload" style="display:none" title="Download anomaly report as CSV">⬇ Export</button>
+      </div>
+    </header>
+
+    <!-- Toast notification area -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         VIEWS
+    ════════════════════════════════════════════════════════════ -->
+    <main class="content" id="mainContent">
+
+      <!-- ───────────────────────────────────────────────────
+           VIEW: DASHBOARD
+      ──────────────────────────────────────────────────────── -->
+      <section class="view active" id="view-dashboard">
+
+        <!-- Hero (shown before data is loaded) -->
+        <div class="hero-panel" id="heroBanner">
+          <div class="hero-icon">⚡</div>
+          <h1 class="hero-title">BillGuard AI</h1>
+          <p class="hero-desc">AI-powered electricity billing anomaly detection.<br>Upload a CSV file to detect suspicious consumption patterns, billing inconsistencies, and meter anomalies.</p>
+          <button class="btn btn--primary" onclick="APP.navigateTo('upload')">Get Started — Upload CSV</button>
+          <a href="data/sample.csv" download class="btn btn--outline" style="margin-left:8px">Download Sample CSV</a>
+        </div>
+
+        <!-- Summary cards (hidden until data loaded) -->
+        <div class="stats-grid" id="statsGrid" style="display:none">
+          <div class="stat-card">
+            <div class="stat-icon">📋</div>
+            <div class="stat-label">Total Records</div>
+            <div class="stat-value" id="statRecords">—</div>
+          </div>
+          <div class="stat-card stat-card--success">
+            <div class="stat-icon">✅</div>
+            <div class="stat-label">Normal Records</div>
+            <div class="stat-value" id="statNormal">—</div>
+          </div>
+          <div class="stat-card stat-card--danger">
+            <div class="stat-icon">⚠️</div>
+            <div class="stat-label">Suspicious Records</div>
+            <div class="stat-value" id="statSuspicious">—</div>
+          </div>
+          <div class="stat-card stat-card--accent">
+            <div class="stat-icon">💰</div>
+            <div class="stat-label">Total Billing Amount</div>
+            <div class="stat-value" id="statBilling">—</div>
+          </div>
+        </div>
+
+        <!-- Severity breakdown (hidden until data loaded) -->
+        <div class="severity-row" id="severityRow" style="display:none">
+          <div class="severity-chip severity-high">🔴 High: <strong id="sevHigh">0</strong></div>
+          <div class="severity-chip severity-medium">🟡 Medium: <strong id="sevMedium">0</strong></div>
+          <div class="severity-chip severity-low">🟢 Low: <strong id="sevLow">0</strong></div>
+          <div class="severity-chip" style="margin-left:auto; color:var(--text-muted); font-size:12px;" id="datasetInfo"></div>
+        </div>
+
+        <!-- AI Summary Panel -->
+        <div class="card ai-summary-card" id="aiSummaryCard" style="display:none">
+          <div class="card-header">
+            <span>🤖 AI Analysis Summary</span>
+            <span class="ai-badge-inline" id="aiBadgeInline">Demo Mode</span>
+          </div>
+          <div id="aiSummaryContent" class="ai-summary-text">Generating analysis…</div>
+        </div>
+
+        <!-- Charts row -->
+        <div class="charts-row" id="chartsRow" style="display:none">
+          <div class="card chart-card">
+            <div class="card-header">Units Consumed per Record</div>
+            <div class="chart-wrapper">
+              <canvas id="consumptionChart"></canvas>
+            </div>
+          </div>
+          <div class="card chart-card">
+            <div class="card-header">Billing Amount per Record</div>
+            <div class="chart-wrapper">
+              <canvas id="billingChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty state (shown before data) -->
+        <div class="empty-dashboard" id="emptyDashboard">
+          <p>Upload a CSV file to see your analysis dashboard.</p>
+        </div>
+
+      </section>
+
+      <!-- ───────────────────────────────────────────────────
+           VIEW: UPLOAD DATA
+      ──────────────────────────────────────────────────────── -->
+      <section class="view" id="view-upload">
+        <div class="page-header">
+          <h1>Upload Electricity Data</h1>
+          <p class="page-subtitle">Import a CSV file with billing and consumption records</p>
+        </div>
+
+        <div class="card upload-card">
+          <div class="drop-zone" id="dropZone">
+            <div class="drop-icon">📁</div>
+            <div class="drop-text">Drag &amp; drop your CSV file here</div>
+            <div class="drop-subtext">or</div>
+            <label class="btn btn--primary" for="csvFileInput">Browse File</label>
+            <input type="file" id="csvFileInput" accept=".csv" style="display:none" />
+            <div class="drop-filename" id="dropFilename" style="display:none"></div>
+          </div>
+
+          <div class="upload-actions" id="uploadActions" style="display:none">
+            <button class="btn btn--primary btn--lg" id="btnAnalyze">🔍 Analyze Records</button>
+            <button class="btn btn--outline btn--lg" id="btnClearFile">✕ Clear</button>
+          </div>
+
+          <div class="upload-format">
+            <div>
+              <strong>Supported CSV columns:</strong><br>
+              <code>consumer_id</code> <code>consumer_name</code> <code>billing_period</code>
+              <code>previous_reading</code> <code>current_reading</code> <code>units_consumed</code>
+              <code>previous_bill</code> <code>current_bill</code> <code>tariff_rate</code>
+              <code>meter_status</code> <code>area</code>
+            </div>
+            <div class="upload-format-actions">
+              <a href="data/sample.csv" download class="btn btn--outline btn--sm">⬇ Download Sample CSV</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Validation errors -->
+        <div class="card error-card" id="uploadErrorCard" style="display:none">
+          <div class="card-header error-header">⚠ Validation Issues</div>
+          <div id="uploadErrorList"></div>
+        </div>
+
+        <!-- Preview table -->
+        <div class="card" id="previewCard" style="display:none">
+          <div class="card-header">
+            Data Preview <span class="card-header-sub" id="previewCount"></span>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table" id="previewTable"></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────────────────────────────
+           VIEW: SUSPICIOUS RECORDS
+      ──────────────────────────────────────────────────────── -->
+      <section class="view" id="view-anomalies">
+        <div class="page-header">
+          <h1>Suspicious Records</h1>
+          <p class="page-subtitle">Records flagged for unusual patterns. These require manual verification — no conclusion about fraud is implied.</p>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="filter-bar" id="anomalyFilterBar" style="display:none">
+          <label class="filter-label">Filter by severity:</label>
+          <button class="filter-btn active" data-sev="all">All</button>
+          <button class="filter-btn" data-sev="High">🔴 High</button>
+          <button class="filter-btn" data-sev="Medium">🟡 Medium</button>
+          <button class="filter-btn" data-sev="Low">🟢 Low</button>
+          <input class="filter-search" id="anomalySearch" type="text" placeholder="Search consumer ID or name…" />
+        </div>
+
+        <div class="card" id="anomalyCard">
+          <div class="empty-state" id="anomalyEmpty">
+            No data loaded yet. Upload a CSV file to run anomaly detection.
+          </div>
+          <div class="table-wrapper" id="anomalyTableWrapper" style="display:none">
+            <table class="data-table" id="anomalyTable"></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────────────────────────────
+           VIEW: ALL RECORDS
+      ──────────────────────────────────────────────────────── -->
+      <section class="view" id="view-all-records">
+        <div class="page-header">
+          <h1>All Records</h1>
+          <p class="page-subtitle">Complete dataset — normal and suspicious records side by side</p>
+        </div>
+
+        <div class="card">
+          <div class="empty-state" id="allRecordsEmpty">No data loaded yet.</div>
+          <div class="table-wrapper" id="allRecordsWrapper" style="display:none">
+            <table class="data-table" id="allRecordsTable"></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────────────────────────────
+           VIEW: ABOUT / HOW IT WORKS
+      ──────────────────────────────────────────────────────── -->
+      <section class="view" id="view-about">
+        <div class="page-header">
+          <h1>How BillGuard AI Works</h1>
+          <p class="page-subtitle">Detection methodology, limitations, and IBM Granite integration</p>
+        </div>
+
+        <div class="card about-card">
+          <h2>🔍 What Does BillGuard AI Detect?</h2>
+          <div class="detection-grid">
+            <div class="detection-item">
+              <div class="detection-icon">📈</div>
+              <strong>Consumption Spike</strong>
+              <p>Units significantly above the dataset average (Z-score &gt; 1.8σ).</p>
+            </div>
+            <div class="detection-item">
+              <div class="detection-icon">📉</div>
+              <strong>Consumption Drop</strong>
+              <p>Units significantly below average — possible meter bypass or tampering.</p>
+            </div>
+            <div class="detection-item">
+              <div class="detection-icon">💸</div>
+              <strong>Billing Inconsistency</strong>
+              <p>Billed amount deviates &gt;20% from tariff × units consumed.</p>
+            </div>
+            <div class="detection-item">
+              <div class="detection-icon">🔢</div>
+              <strong>Meter Reading Error</strong>
+              <p>Reading gap doesn't match reported consumption (gap &gt;5 units).</p>
+            </div>
+            <div class="detection-item">
+              <div class="detection-icon">👤</div>
+              <strong>Personal Drop / Spike</strong>
+              <p>Consumer's usage drops &gt;60% or rises &gt;250% vs their own previous month.</p>
+            </div>
+            <div class="detection-item">
+              <div class="detection-icon">⚙️</div>
+              <strong>Faulty Meter Status</strong>
+              <p>Meter flagged as Faulty, Tampered, or any non-Active status.</p>
+            </div>
+          </div>
+
+          <h2>📊 Detection Method</h2>
+          <p>BillGuard AI combines <strong>Z-score statistics</strong> (dataset-level) with <strong>rule-based checks</strong> (per-consumer history). Each record is analysed independently. Flagged records are assigned a severity level (High / Medium / Low) based on the type and magnitude of deviation.</p>
+          <p><strong>Disclaimer:</strong> This tool surfaces patterns that <em>require verification</em>. It does not confirm or allege any fraud. All flagged records should be reviewed by a qualified human inspector before action is taken.</p>
+
+          <h2>🤖 IBM Granite AI Integration</h2>
+          <p>When IBM Cloud credentials are configured in the backend, BillGuard AI sends a summary of detection results to IBM Granite (via watsonx.ai) to generate plain-language explanations, pattern summaries, and verification recommendations.</p>
+          <p><strong>Without credentials:</strong> The application runs fully using the local detection engine. AI explanation panels show clearly labelled <em>Demo Mode</em> responses generated locally.</p>
+          <p>To configure IBM Granite, see <code>backend/.env.example</code> and start the backend server with <code>node backend/server.js</code>.</p>
+
+          <h2>📁 Supported CSV Format</h2>
+          <table class="data-table about-table">
+            <thead><tr><th>Column</th><th>Required</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>consumer_id</code></td><td>Recommended</td><td>Unique consumer account number</td></tr>
+              <tr><td><code>consumer_name</code></td><td>Optional</td><td>Consumer's name</td></tr>
+              <tr><td><code>billing_period</code></td><td>Recommended</td><td>e.g. Jan-2024</td></tr>
+              <tr><td><code>previous_reading</code></td><td>Optional</td><td>Meter reading at start of period</td></tr>
+              <tr><td><code>current_reading</code></td><td>Optional</td><td>Meter reading at end of period</td></tr>
+              <tr><td><code>units_consumed</code></td><td>✅ Required</td><td>Units (kWh) consumed</td></tr>
+              <tr><td><code>current_bill</code></td><td>✅ Required</td><td>Amount billed this period</td></tr>
+              <tr><td><code>tariff_rate</code></td><td>Recommended</td><td>Rate per unit (₹/kWh)</td></tr>
+              <tr><td><code>meter_status</code></td><td>Optional</td><td>Active / Faulty / Tampered</td></tr>
+              <tr><td><code>area</code></td><td>Optional</td><td>Zone or locality</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div><!-- end .main-wrapper -->
+
+  <!-- ═══════════════════════════════════════════════════════════
+       DETAIL MODAL — shown when user clicks a suspicious record
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="modalOverlay" style="display:none" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">Record Details</div>
+        <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       LOADING OVERLAY — shown while analysis runs
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="loading-overlay" id="loadingOverlay" style="display:none">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">Analysing records…</div>
+  </div>
+
+  <!-- JS Modules — ORDER MATTERS: dependencies first -->
+  <script src="js/ui.js"></script>
+  <script src="js/detector.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/upload.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
